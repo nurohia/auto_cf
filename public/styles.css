@@ -194,6 +194,32 @@ h1 {
   align-items: center;
 }
 
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(245, 247, 244, 0.86);
+  backdrop-filter: blur(10px);
+}
+
+.login-box {
+  width: min(360px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  margin-bottom: 4px;
+}
+
 .primary-button,
 .ghost-button,
 .icon-button {
@@ -712,7 +738,7 @@ select:focus {
     width: min(354px, 100%);
     max-width: 100%;
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-columns: 52px 72px minmax(0, 1fr);
   }
 
   .top-actions .ghost-button,

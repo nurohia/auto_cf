@@ -8,7 +8,9 @@ APP_NAME="Auto CF"
 APP_SLUG="auto-cf"
 SERVICE_NAME="${SERVICE_NAME:-auto-cf}"
 DEFAULT_INSTALL_PATH="/opt/auto_cf"
+LEGACY_INSTALL_PATH="/opt/atuo-cf"
 ENV_RECORD_FILE="/etc/auto_cf_path"
+LEGACY_ENV_RECORD_FILE="/etc/atuo-cf_env"
 SOURCE_REPO_URL="${SOURCE_REPO_URL:-https://github.com/nurohia/auto_cf.git}"
 SOURCE_REPO_BRANCH="${SOURCE_REPO_BRANCH:-main}"
 SCRIPT_RAW_URL="${SCRIPT_RAW_URL:-https://raw.githubusercontent.com/nurohia/auto_cf/${SOURCE_REPO_BRANCH}/deploy.sh}"
@@ -27,9 +29,45 @@ warn() { echo -e "${YELLOW}[WARN]${RESET} $1" >&2; }
 err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
 die()  { echo -e "${RED}[FATAL]${RESET} $1" >&2; exit 1; }
 
+run_as_root() {
+    if [[ "${EUID}" -eq 0 ]]; then
+        return 1
+    fi
+
+    command -v sudo >/dev/null 2>&1 || die "需要 root 权限，但系统没有 sudo。请切换 root 后再运行。"
+    info "该操作需要 root 权限，正在调用 sudo ..."
+
+    if [[ -f "${BASH_SOURCE[0]}" && "${BASH_SOURCE[0]}" != /dev/fd/* ]]; then
+        sudo env \
+            APP_DIR="${APP_DIR:-}" \
+            PORT="${PORT:-}" \
+            SERVICE_NAME="${SERVICE_NAME}" \
+            SOURCE_REPO_URL="${SOURCE_REPO_URL}" \
+            SOURCE_REPO_BRANCH="${SOURCE_REPO_BRANCH}" \
+            SCRIPT_RAW_URL="${SCRIPT_RAW_URL}" \
+            SKIP_CFST="${SKIP_CFST}" \
+            CFST_DOWNLOAD_URL="${CFST_DOWNLOAD_URL}" \
+            bash "${BASH_SOURCE[0]}" "$@"
+    else
+        local script_body
+        script_body="$(curl -fsSL "${SCRIPT_RAW_URL}")"
+        sudo env \
+            APP_DIR="${APP_DIR:-}" \
+            PORT="${PORT:-}" \
+            SERVICE_NAME="${SERVICE_NAME}" \
+            SOURCE_REPO_URL="${SOURCE_REPO_URL}" \
+            SOURCE_REPO_BRANCH="${SOURCE_REPO_BRANCH}" \
+            SCRIPT_RAW_URL="${SCRIPT_RAW_URL}" \
+            SKIP_CFST="${SKIP_CFST}" \
+            CFST_DOWNLOAD_URL="${CFST_DOWNLOAD_URL}" \
+            bash -c "${script_body}" deploy.sh "$@"
+    fi
+}
+
 require_root() {
     if [[ "${EUID}" -ne 0 ]]; then
-        die "请使用 root 运行：sudo bash deploy.sh $*"
+        run_as_root "$@"
+        exit $?
     fi
 }
 
@@ -267,6 +305,7 @@ WorkingDirectory=${workdir}
 Environment=NODE_ENV=production
 Environment=PORT=${port}
 Environment=CFST_BIN=${workdir}/bin/cfst
+Environment=APP_PASSWORD_FILE=${workdir}/.data/admin-password
 ExecStart=${npm_bin} run start
 Restart=always
 RestartSec=3
@@ -277,6 +316,18 @@ EOF
 
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}" >/dev/null
+}
+
+ensure_admin_password() {
+    local workdir="$1"
+    local password_file="${workdir}/.data/admin-password"
+    mkdir -p "${workdir}/.data"
+    chmod 700 "${workdir}/.data"
+
+    if [[ ! -s "${password_file}" ]]; then
+        openssl rand -base64 18 > "${password_file}"
+        chmod 600 "${password_file}"
+    fi
 }
 
 start_service() {
@@ -365,6 +416,9 @@ ${GREEN}部署完成。${RESET}
 安装目录：
   ${workdir}
 
+管理员密码：
+  $(cat "${workdir}/.data/admin-password" 2>/dev/null || echo "请查看 ${workdir}/.data/admin-password")
+
 常用命令：
   cd ${workdir} && sudo bash deploy.sh
   sudo bash ${workdir}/deploy.sh update
@@ -396,6 +450,7 @@ install_app() {
     mkdir -p "${workdir}"
     echo "${workdir}" > "${ENV_RECORD_FILE}"
     sync_project_source "${workdir}"
+    ensure_admin_password "${workdir}"
     write_service "${workdir}" "${port}"
 
     ensure_cfst "${workdir}"
@@ -418,6 +473,7 @@ update_app() {
     port="$(detect_port)"
     echo "${workdir}" > "${ENV_RECORD_FILE}"
     sync_project_source "${workdir}"
+    ensure_admin_password "${workdir}"
     ensure_cfst "${workdir}"
     write_service "${workdir}" "${port}"
     start_service
@@ -467,12 +523,21 @@ uninstall_app() {
         [[ "${confirm}" == "YES" ]] || die "已取消卸载。"
     fi
 
-    systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
-    systemctl disable "${SERVICE_NAME}" >/dev/null 2>&1 || true
-    rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+    for service in "${SERVICE_NAME}" "auto-cf" "atuo-cf"; do
+        systemctl stop "${service}" 2>/dev/null || true
+        systemctl disable "${service}" >/dev/null 2>&1 || true
+        rm -f "/etc/systemd/system/${service}.service"
+    done
     systemctl daemon-reload 2>/dev/null || true
     safe_remove_dir "${workdir}"
+    if [[ "${workdir}" != "${DEFAULT_INSTALL_PATH}" ]]; then
+        safe_remove_dir "${DEFAULT_INSTALL_PATH}" 2>/dev/null || true
+    fi
+    if [[ "${workdir}" != "${LEGACY_INSTALL_PATH}" ]]; then
+        safe_remove_dir "${LEGACY_INSTALL_PATH}" 2>/dev/null || true
+    fi
     rm -f "${ENV_RECORD_FILE}"
+    rm -f "${LEGACY_ENV_RECORD_FILE}"
     info "卸载完成。"
 }
 
@@ -481,17 +546,17 @@ print_usage() {
 ${APP_NAME} 一键部署脚本
 
 用法：
-  sudo bash deploy.sh install        安装
-  sudo bash deploy.sh update         更新并重启
-  sudo bash deploy.sh install-cfst   安装/更新 CloudflareSpeedTest
-  sudo bash deploy.sh restart        重启服务
+  bash deploy.sh install             安装
+  bash deploy.sh update              更新并重启
+  bash deploy.sh install-cfst        安装/更新 CloudflareSpeedTest
+  bash deploy.sh restart             重启服务
   bash deploy.sh status              查看状态
   bash deploy.sh logs                查看日志
-  sudo bash deploy.sh uninstall      卸载
+  bash deploy.sh uninstall           卸载
   bash deploy.sh menu                打开菜单
 
 远程安装：
-  curl -fsSL ${SCRIPT_RAW_URL} | sudo bash -s install
+  bash <(curl -fsSL ${SCRIPT_RAW_URL})
 
 可选环境变量：
   APP_DIR=/opt/auto_cf PORT=5100 SERVICE_NAME=auto-cf SOURCE_REPO_BRANCH=main SKIP_CFST=false

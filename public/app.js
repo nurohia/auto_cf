@@ -16,6 +16,8 @@ const elements = {
   cfstStatus: document.querySelector("#cfstStatus"),
   cfstPath: document.querySelector("#cfstPath"),
   serviceUrl: document.querySelector("#serviceUrl"),
+  loginScreen: document.querySelector("#loginScreen"),
+  loginForm: document.querySelector("#loginForm"),
   metricTasks: document.querySelector("#metricTasks"),
   metricEnabled: document.querySelector("#metricEnabled"),
   metricSuccess: document.querySelector("#metricSuccess"),
@@ -25,10 +27,12 @@ const elements = {
 document.querySelector("#newTaskButton").addEventListener("click", () => openDialog());
 document.querySelector("#emptyNewButton").addEventListener("click", () => openDialog());
 document.querySelector("#refreshButton").addEventListener("click", () => refresh());
+document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#closeDialogButton").addEventListener("click", () => elements.dialog.close());
 document.querySelector("#cancelDialogButton").addEventListener("click", () => elements.dialog.close());
 document.querySelector("#authTypeSelect").addEventListener("change", updateAuthFields);
 elements.form.addEventListener("submit", saveTask);
+elements.loginForm.addEventListener("submit", login);
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
@@ -40,10 +44,47 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 });
 
 elements.serviceUrl.textContent = location.origin;
-await refresh();
+await init();
 setInterval(refresh, 6000);
 
+async function init() {
+  const session = await api("/api/session", { skipAuthRedirect: true });
+  if (session.authenticated) {
+    showLogin(false);
+    await refresh();
+  } else {
+    showLogin(true);
+  }
+}
+
+async function login(event) {
+  event.preventDefault();
+  const formData = new FormData(elements.loginForm);
+  try {
+    await api("/api/session", {
+      method: "POST",
+      body: JSON.stringify(Object.fromEntries(formData.entries())),
+      skipAuthRedirect: true
+    });
+    elements.loginForm.reset();
+    showLogin(false);
+    await refresh();
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function logout() {
+  await api("/api/session", { method: "DELETE", skipAuthRedirect: true });
+  showLogin(true);
+}
+
+function showLogin(visible) {
+  elements.loginScreen.classList.toggle("hidden", !visible);
+}
+
 async function refresh() {
+  if (!elements.loginScreen.classList.contains("hidden")) return;
   try {
     const [tasksData, healthData] = await Promise.all([
       api("/api/tasks"),
@@ -260,6 +301,9 @@ async function api(path, options = {}) {
     ...options
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && !options.skipAuthRedirect) {
+    showLogin(true);
+  }
   if (!response.ok) throw new Error(data.error || "请求失败");
   return data;
 }

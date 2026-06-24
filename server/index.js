@@ -13,6 +13,7 @@ const publicDir = path.join(rootDir, "public");
 const dataDir = path.join(rootDir, ".data");
 const dbPath = path.join(dataDir, "db.json");
 const secretPath = path.join(dataDir, "secret");
+const adminPasswordPath = path.join(dataDir, "admin-password");
 const port = Number(process.env.PORT || 5100);
 const cfstBinFromEnv = process.env.CFST_BIN;
 const cfstTimeoutMs = Number(process.env.CFST_TIMEOUT_MS || 15 * 60 * 1000);
@@ -36,7 +37,9 @@ const defaultDb = {
 
 let db = structuredClone(defaultDb);
 let secretKey;
+let adminPassword;
 const timers = new Map();
+const sessions = new Map();
 let activeRun = Promise.resolve();
 
 await ensureStorage();
@@ -73,6 +76,7 @@ async function ensureStorage() {
 
   const rawSecret = (process.env.APP_SECRET || await fs.readFile(secretPath, "utf8")).trim();
   secretKey = crypto.createHash("sha256").update(rawSecret).digest();
+  adminPassword = await loadAdminPassword();
 
   try {
     await fs.access(dbPath, fsConstants.R_OK);
@@ -96,6 +100,16 @@ async function saveDb() {
 }
 
 async function handleApi(req, res, url) {
+  if (url.pathname === "/api/session") {
+    await handleSessionApi(req, res);
+    return;
+  }
+
+  if (!isAuthenticated(req)) {
+    sendJson(res, 401, { error: "请先登录" });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     sendJson(res, 200, {
       ok: true,
@@ -184,6 +198,85 @@ async function handleApi(req, res, url) {
   }
 
   sendJson(res, 404, { error: "接口不存在" });
+}
+
+async function loadAdminPassword() {
+  if (process.env.APP_PASSWORD) return process.env.APP_PASSWORD;
+  if (process.env.APP_PASSWORD_FILE) {
+    return (await fs.readFile(process.env.APP_PASSWORD_FILE, "utf8")).trim();
+  }
+
+  try {
+    return (await fs.readFile(adminPasswordPath, "utf8")).trim();
+  } catch {
+    const generated = crypto.randomBytes(12).toString("base64url");
+    await fs.writeFile(adminPasswordPath, `${generated}\n`, { mode: 0o600 });
+    console.log(`Admin password generated at ${adminPasswordPath}`);
+    return generated;
+  }
+}
+
+async function handleSessionApi(req, res) {
+  if (req.method === "GET") {
+    sendJson(res, 200, { authenticated: isAuthenticated(req) });
+    return;
+  }
+
+  if (req.method === "POST") {
+    const body = await readJson(req);
+    if (!verifyPassword(body.password || "")) {
+      sendJson(res, 401, { error: "密码错误" });
+      return;
+    }
+
+    const token = crypto.randomBytes(32).toString("base64url");
+    sessions.set(token, Date.now() + 7 * 24 * 60 * 60 * 1000);
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "set-cookie": `auto_cf_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 60 * 60}`
+    });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === "DELETE") {
+    const token = readCookie(req, "auto_cf_session");
+    if (token) sessions.delete(token);
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "set-cookie": "auto_cf_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+    });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  sendJson(res, 405, { error: "方法不支持" });
+}
+
+function isAuthenticated(req) {
+  const token = readCookie(req, "auto_cf_session");
+  if (!token) return false;
+  const expiresAt = sessions.get(token);
+  if (!expiresAt || expiresAt < Date.now()) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function readCookie(req, name) {
+  const cookies = String(req.headers.cookie || "").split(";").map((item) => item.trim());
+  const prefix = `${name}=`;
+  const cookie = cookies.find((item) => item.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : "";
+}
+
+function verifyPassword(value) {
+  const expected = Buffer.from(String(adminPassword));
+  const actual = Buffer.from(String(value));
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
 async function serveStatic(req, res, url) {

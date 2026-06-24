@@ -43,6 +43,7 @@
           </div>
           <div class="top-actions">
             <button class="ghost-button" id="refreshButton" title="刷新">↻</button>
+            <button class="ghost-button" id="logoutButton">退出</button>
             <button class="primary-button" id="newTaskButton">新增任务</button>
           </div>
         </header>
@@ -213,6 +214,23 @@
         </div>
       </form>
     </dialog>
+
+    <div class="login-screen hidden" id="loginScreen">
+      <form class="login-box" id="loginForm">
+        <div class="brand login-brand">
+          <div class="brand-mark">CF</div>
+          <div>
+            <strong>Auto CF</strong>
+            <span>登录管理面板</span>
+          </div>
+        </div>
+        <label>
+          <span>管理员密码</span>
+          <input name="password" type="password" autocomplete="current-password" required autofocus />
+        </label>
+        <button class="primary-button" type="submit">登录</button>
+      </form>
+    </div>
 
     <div class="toast hidden" id="toast"></div>
     <script src="/app.js" type="module"></script>

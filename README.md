@@ -107,7 +107,13 @@ sudo bash deploy.sh install
 也可以直接远程安装：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | sudo bash -s install
+bash <(curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh)
+```
+
+执行后会进入菜单，选择 `1` 安装。安装完成会显示管理员密码，密码也会保存到：
+
+```text
+/opt/auto_cf/.data/admin-password
 ```
 
 默认部署到：
@@ -149,15 +155,16 @@ curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | su
 常用命令：
 
 ```bash
-sudo bash deploy.sh update
-sudo bash deploy.sh restart
+bash deploy.sh menu
 bash deploy.sh status
 bash deploy.sh logs
+sudo bash deploy.sh update
+sudo bash deploy.sh restart
 sudo bash deploy.sh uninstall
 ```
 
 自定义端口或目录：
 
 ```bash
-sudo PORT=8080 APP_DIR=/opt/auto_cf bash deploy.sh install
+PORT=8080 APP_DIR=/opt/auto_cf bash deploy.sh install
 ```

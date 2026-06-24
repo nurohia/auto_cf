@@ -134,11 +134,7 @@ auto-cf
 /opt/auto_cf/bin/cfst
 ```
 
-手动安装或更新 CloudflareSpeedTest：
-
-```bash
-sudo bash deploy.sh install-cfst
-```
+安装和更新项目时会自动检查并安装 CloudflareSpeedTest。
 
 如果你的服务器访问 GitHub release 不稳定，可以指定下载直链：
 

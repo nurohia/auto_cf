@@ -548,7 +548,6 @@ ${APP_NAME} 一键部署脚本
 用法：
   bash deploy.sh install             安装
   bash deploy.sh update              更新并重启
-  bash deploy.sh install-cfst        安装/更新 CloudflareSpeedTest
   bash deploy.sh restart             重启服务
   bash deploy.sh status              查看状态
   bash deploy.sh logs                查看日志
@@ -577,11 +576,10 @@ ${GREEN}${APP_NAME} 管理菜单${RESET}
 
 1. 安装 / 重装
 2. 更新项目
-3. 安装 / 更新 CloudflareSpeedTest
-4. 重启服务
-5. 查看状态
-6. 查看日志
-7. 卸载
+3. 重启服务
+4. 查看状态
+5. 查看日志
+6. 卸载
 0. 退出
 
 EOF
@@ -590,11 +588,10 @@ EOF
         case "${choice}" in
             1) install_app ;;
             2) update_app ;;
-            3) install_cfst_action ;;
-            4) restart_app ;;
-            5) show_status ;;
-            6) show_logs ;;
-            7) uninstall_app ;;
+            3) restart_app ;;
+            4) show_status ;;
+            5) show_logs ;;
+            6) uninstall_app ;;
             0) exit 0 ;;
             *) warn "无效选择。" ;;
         esac

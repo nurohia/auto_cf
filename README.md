@@ -98,7 +98,7 @@ sudo bash deploy.sh install
 也可以直接远程安装：
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh) install
+curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | sudo bash -s install
 ```
 
 默认部署到：

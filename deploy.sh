@@ -93,6 +93,10 @@ is_project_root() {
     [[ -f "$1/package.json" && -d "$1/server" && -d "$1/public" ]]
 }
 
+is_git_project_root() {
+    is_project_root "$1" && [[ -d "$1/.git" ]]
+}
+
 find_project_root() {
     if [[ -n "${PROJECT_ROOT:-}" && -d "${PROJECT_ROOT}" ]] && is_project_root "${PROJECT_ROOT}"; then
         cd "${PROJECT_ROOT}" >/dev/null 2>&1 && pwd
@@ -101,12 +105,12 @@ find_project_root() {
 
     local script_dir
     script_dir="$(get_script_dir)"
-    if is_project_root "${script_dir}"; then
+    if is_git_project_root "${script_dir}"; then
         echo "${script_dir}"
         return 0
     fi
 
-    if is_project_root "$PWD"; then
+    if is_git_project_root "$PWD"; then
         pwd
         return 0
     fi
@@ -206,26 +210,22 @@ sync_project_source() {
         rsync -a --delete \
             --exclude '.git' \
             --exclude '.data' \
+            --exclude 'bin' \
             --exclude 'node_modules' \
             "${project_root}/" "${workdir}/"
     else
         require_cmd git
-        if [[ -d "${workdir}/.git" ]]; then
-            info "从 ${SOURCE_REPO_URL} 更新源码 ..."
-            git -C "${workdir}" fetch --depth 1 origin "${SOURCE_REPO_BRANCH}"
-            git -C "${workdir}" checkout -f FETCH_HEAD
-        else
-            info "从 ${SOURCE_REPO_URL} 拉取源码 ..."
-            local tmp_dir
-            tmp_dir="$(mktemp -d)"
-            git clone --depth 1 --branch "${SOURCE_REPO_BRANCH}" "${SOURCE_REPO_URL}" "${tmp_dir}"
-            rsync -a --delete \
-                --exclude '.git' \
-                --exclude '.data' \
-                --exclude 'node_modules' \
-                "${tmp_dir}/" "${workdir}/"
-            rm -rf "${tmp_dir}"
-        fi
+        info "从 ${SOURCE_REPO_URL} 拉取源码 ..."
+        local tmp_dir
+        tmp_dir="$(mktemp -d)"
+        git clone --depth 1 --branch "${SOURCE_REPO_BRANCH}" "${SOURCE_REPO_URL}" "${tmp_dir}"
+        rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.data' \
+            --exclude 'bin' \
+            --exclude 'node_modules' \
+            "${tmp_dir}/" "${workdir}/"
+        rm -rf "${tmp_dir}"
     fi
 
     chmod 700 "${workdir}/.data"
@@ -481,7 +481,7 @@ ${APP_NAME} 一键部署脚本
   bash deploy.sh menu                打开菜单
 
 远程安装：
-  sudo bash <(curl -fsSL ${SCRIPT_RAW_URL}) install
+  curl -fsSL ${SCRIPT_RAW_URL} | sudo bash -s install
 
 可选环境变量：
   APP_DIR=/opt/auto_cf PORT=5100 SERVICE_NAME=auto-cf SOURCE_REPO_BRANCH=main

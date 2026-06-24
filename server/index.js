@@ -16,6 +16,8 @@ const secretPath = path.join(dataDir, "secret");
 const port = Number(process.env.PORT || 5100);
 const cfstBinFromEnv = process.env.CFST_BIN;
 const cfstTimeoutMs = Number(process.env.CFST_TIMEOUT_MS || 15 * 60 * 1000);
+const cloudflareTimeoutMs = Number(process.env.CLOUDFLARE_TIMEOUT_MS || 30 * 1000);
+const maxRequestBodyBytes = Number(process.env.MAX_REQUEST_BODY_BYTES || 1024 * 1024);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -115,8 +117,8 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const task = normalizeTask(body);
     db.tasks.unshift(task);
-    await saveDb();
     scheduleTask(task);
+    await saveDb();
     sendJson(res, 201, { task: publicTask(task) });
     return;
   }
@@ -131,8 +133,8 @@ async function handleApi(req, res, url) {
       createdAt: task.createdAt,
       token: body.apiToken ? encrypt(body.apiToken) : task.token
     });
-    await saveDb();
     scheduleTask(task);
+    await saveDb();
     sendJson(res, 200, { task: publicTask(task) });
     return;
   }
@@ -154,14 +156,17 @@ async function handleApi(req, res, url) {
 
     if (action === "toggle") {
       task.enabled = !task.enabled;
-      await saveDb();
       scheduleTask(task);
+      await saveDb();
       sendJson(res, 200, { task: publicTask(task) });
       return;
     }
 
     if (action === "test") {
       const cloudflare = await resolveCloudflareRecord(task, { createIfMissing: false });
+      task.updatedAt = new Date().toISOString();
+      task.lastMessage = `连接成功：${cloudflare.zone.name}`;
+      await saveDb();
       sendJson(res, 200, {
         ok: true,
         zoneName: cloudflare.zone.name,
@@ -170,8 +175,11 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    queueRun(task.id, "manual");
-    sendJson(res, 202, { ok: true, message: "任务已加入队列" });
+    const queued = queueRun(task.id, "manual");
+    sendJson(res, queued ? 202 : 409, {
+      ok: queued,
+      message: queued ? "任务已加入队列" : "任务正在排队或运行中"
+    });
     return;
   }
 
@@ -342,6 +350,10 @@ function intervalMs(task) {
 
 function queueRun(taskId, trigger) {
   const task = findTask(taskId);
+  if (task.status === "queued" || task.status === "running") {
+    return false;
+  }
+
   clearTaskTimer(taskId);
   task.status = "queued";
   task.lastMessage = trigger === "manual" ? "手动任务已排队" : "定时任务已排队";
@@ -356,6 +368,7 @@ function queueRun(taskId, trigger) {
       if (fresh?.enabled) scheduleTask(fresh);
       saveDb().catch(console.error);
     });
+  return true;
 }
 
 async function runTask(taskId, trigger) {
@@ -453,9 +466,13 @@ async function runCfst(task) {
     args.unshift("-ipv6");
   }
 
-  await spawnProcess(bin, args, { cwd: runDir, timeoutMs: cfstTimeoutMs });
-  const csv = await fs.readFile(outputPath, "utf8");
-  return parseCfstCsv(csv);
+  try {
+    await spawnProcess(bin, args, { cwd: runDir, timeoutMs: cfstTimeoutMs });
+    const csv = await fs.readFile(outputPath, "utf8");
+    return parseCfstCsv(csv);
+  } finally {
+    await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function findCfstBinary() {
@@ -651,6 +668,7 @@ async function cfRequest(pathname, options) {
       authorization: `Bearer ${options.token}`,
       "content-type": "application/json"
     },
+    signal: AbortSignal.timeout(cloudflareTimeoutMs),
     body: options.body ? JSON.stringify(options.body) : undefined
   });
   const data = await response.json().catch(() => ({}));
@@ -684,7 +702,12 @@ function decrypt(value) {
 
 async function readJson(req) {
   let body = "";
-  for await (const chunk of req) body += chunk;
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > maxRequestBodyBytes) {
+      throw badRequest("请求体过大");
+    }
+  }
   if (!body) return {};
   try {
     return JSON.parse(body);

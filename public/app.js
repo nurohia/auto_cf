@@ -18,6 +18,9 @@ const elements = {
   serviceUrl: document.querySelector("#serviceUrl"),
   loginScreen: document.querySelector("#loginScreen"),
   loginForm: document.querySelector("#loginForm"),
+  quickForm: document.querySelector("#quickForm"),
+  quickResultPanel: document.querySelector("#quickResultPanel"),
+  quickResultGrid: document.querySelector("#quickResultGrid"),
   metricTasks: document.querySelector("#metricTasks"),
   metricEnabled: document.querySelector("#metricEnabled"),
   metricSuccess: document.querySelector("#metricSuccess"),
@@ -31,7 +34,9 @@ document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#closeDialogButton").addEventListener("click", () => elements.dialog.close());
 document.querySelector("#cancelDialogButton").addEventListener("click", () => elements.dialog.close());
 document.querySelector("#authTypeSelect").addEventListener("change", updateAuthFields);
+document.querySelector("#quickPreviewButton").addEventListener("click", quickPreview);
 elements.form.addEventListener("submit", saveTask);
+elements.quickForm.addEventListener("submit", quickRun);
 elements.loginForm.addEventListener("submit", login);
 
 document.querySelectorAll(".nav-item").forEach((button) => {
@@ -272,13 +277,8 @@ function updateAuthFields() {
 
 async function saveTask(event) {
   event.preventDefault();
-  const formData = new FormData(elements.form);
-  const payload = Object.fromEntries(formData.entries());
-  payload.proxied = elements.form.proxied.checked;
-  payload.enabled = elements.form.enabled.checked;
-
+  const payload = formPayload();
   const id = elements.form.id.value;
-  if (!payload.apiToken) delete payload.apiToken;
 
   try {
     await api(id ? `/api/tasks/${id}` : "/api/tasks", {
@@ -291,6 +291,83 @@ async function saveTask(event) {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+async function quickPreview() {
+  const payload = quickPayload();
+  if (!payload.testTarget && !payload.hostname) {
+    showToast("先填写要优选的域名");
+    return;
+  }
+
+  try {
+    const preview = await api("/api/quick-preview", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    renderQuickResult(preview);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function quickRun(event) {
+  event.preventDefault();
+  const payload = quickPayload();
+  try {
+    elements.quickResultPanel.classList.remove("hidden");
+    elements.quickResultGrid.innerHTML = resultItem("状态", "正在优选，请稍等...");
+    const result = await api("/api/quick-run", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    renderQuickResult(result);
+  } catch (error) {
+    showToast(error.message);
+    elements.quickResultGrid.innerHTML = resultItem("错误", error.message);
+  }
+}
+
+function formPayload() {
+  const formData = new FormData(elements.form);
+  const payload = Object.fromEntries(formData.entries());
+  payload.proxied = elements.form.proxied.checked;
+  payload.enabled = elements.form.enabled.checked;
+  if (!payload.apiToken) delete payload.apiToken;
+  return payload;
+}
+
+function quickPayload() {
+  const formData = new FormData(elements.quickForm);
+  return Object.fromEntries(formData.entries());
+}
+
+function renderQuickResult(result) {
+  elements.quickResultPanel.classList.remove("hidden");
+  const items = [
+    ["测速 URL", result.testUrl || "-"],
+    ["记录类型", result.recordType || "A"],
+    ["CFST", result.cfst?.found ? "已就绪" : "未找到"],
+    ["CFST 路径", result.cfst?.path || "-"]
+  ];
+
+  if (result.result) {
+    items.push(["优选 IP", result.result.ip || "-"]);
+    items.push(["平均延迟", result.result.latency === null ? "-" : `${result.result.latency} ms`]);
+    items.push(["下载速度", result.result.speed === null ? "-" : `${result.result.speed} MB/s`]);
+  }
+
+  if (result.message) items.push(["结果", result.message]);
+  elements.quickResultGrid.innerHTML = items.map(([label, value]) => resultItem(label, value)).join("");
+}
+
+function resultItem(label, value) {
+  return `
+    <div class="preview-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
 }
 
 async function api(path, options = {}) {

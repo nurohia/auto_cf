@@ -40,6 +40,7 @@ let secretKey;
 let adminPassword;
 const timers = new Map();
 const sessions = new Map();
+let quickRunActive = false;
 let activeRun = Promise.resolve();
 
 await ensureStorage();
@@ -129,6 +130,29 @@ async function handleApi(req, res, url) {
       tasks: db.tasks.map(publicTask),
       logs: db.logs.slice(0, 100)
     });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/quick-preview") {
+    const body = await readJson(req);
+    const preview = await buildQuickPreview(body);
+    sendJson(res, 200, preview);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/quick-run") {
+    if (quickRunActive) {
+      sendJson(res, 409, { error: "已有快查优选正在运行" });
+      return;
+    }
+    const body = await readJson(req);
+    quickRunActive = true;
+    try {
+      const result = await runQuickOptimize(body);
+      sendJson(res, 200, result);
+    } finally {
+      quickRunActive = false;
+    }
     return;
   }
 
@@ -435,6 +459,35 @@ function testTargetToUrl(value) {
   return `https://${target}/cdn-cgi/trace`;
 }
 
+async function buildQuickPreview(input) {
+  const testTarget = cleanTestTarget(input.testTarget);
+  const recordType = input.recordType === "AAAA" ? "AAAA" : "A";
+  if (!testTarget) throw badRequest("请填写要优选的域名");
+
+  return {
+    testTarget,
+    testUrl: testTargetToUrl(testTarget),
+    recordType,
+    cfst: await detectCfstStatus(),
+    message: "这是临时快查，不会保存任务或更新 DNS"
+  };
+}
+
+async function runQuickOptimize(input) {
+  const preview = await buildQuickPreview(input);
+  const result = await runCfst({
+    testTarget: preview.testTarget,
+    recordType: preview.recordType,
+    cfstArgs: typeof input.cfstArgs === "string" ? input.cfstArgs.trim() : ""
+  });
+
+  return {
+    ...preview,
+    result,
+    message: result.ip ? "优选完成" : "没有返回可用 IP"
+  };
+}
+
 function findTask(id) {
   const task = db.tasks.find((item) => item.id === id);
   if (!task) throw notFound("任务不存在");
@@ -579,7 +632,7 @@ async function runTask(taskId, trigger) {
 async function runCfst(task) {
   const bin = await findCfstBinary();
   if (!bin) {
-    throw new Error("未找到 CloudflareSpeedTest。请把 cfst 放到 bin/cfst，或设置 CFST_BIN 环境变量。");
+    throw new Error("当前环境未找到 CloudflareSpeedTest。Debian 菜单安装会自动安装；手动运行时请确认 bin/cfst 存在或设置 CFST_BIN。");
   }
 
   const runDir = await fs.mkdtemp(path.join(os.tmpdir(), "atuo-cf-"));

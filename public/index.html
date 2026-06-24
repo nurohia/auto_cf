@@ -21,6 +21,10 @@
             <span class="icon">⌁</span>
             <span>任务</span>
           </button>
+          <button class="nav-item" data-view="quick">
+            <span class="icon">↯</span>
+            <span>快查</span>
+          </button>
           <button class="nav-item" data-view="logs">
             <span class="icon">≡</span>
             <span>日志</span>
@@ -75,6 +79,38 @@
           </div>
             <h2>还没有优选任务</h2>
             <button class="primary-button" id="emptyNewButton">新增任务</button>
+          </div>
+        </section>
+
+        <section class="view" id="quickView">
+          <div class="quick-panel">
+            <form id="quickForm" class="quick-form">
+              <label>
+                <span>要优选的域名</span>
+                <input name="testTarget" placeholder="speed.example.com 或 https://speed.example.com/file" required />
+              </label>
+              <label>
+                <span>记录类型</span>
+                <select name="recordType">
+                  <option value="A">A IPv4</option>
+                  <option value="AAAA">AAAA IPv6</option>
+                </select>
+              </label>
+              <label class="wide">
+                <span>CFST 参数</span>
+                <input name="cfstArgs" placeholder="-tl 200 -sl 5 -dn 10" />
+              </label>
+              <div class="quick-actions">
+                <button class="ghost-button" id="quickPreviewButton" type="button">检查配置</button>
+                <button class="primary-button" id="quickRunButton" type="submit">开始优选</button>
+              </div>
+            </form>
+            <div class="preview-panel hidden" id="quickResultPanel">
+              <div class="preview-head">
+                <strong>快查结果</strong>
+              </div>
+              <div class="preview-grid" id="quickResultGrid"></div>
+            </div>
           </div>
         </section>
 

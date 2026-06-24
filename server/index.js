@@ -372,7 +372,7 @@ function normalizeTask(input, existing = null) {
   const intervalUnit = ["seconds", "minutes", "hours", "days"].includes(input.intervalUnit)
     ? input.intervalUnit
     : "hours";
-  const ttl = Math.max(1, Number.parseInt(input.ttl, 10) || 1);
+  const ttl = Math.max(1, Number.parseInt(input.ttl, 10) || 60);
   const cfstArgs = typeof input.cfstArgs === "string" ? input.cfstArgs.trim() : "";
 
   if (!hostname) throw badRequest("请填写要解析的域名");
@@ -639,6 +639,7 @@ async function runCfst(task) {
   const outputPath = path.join(runDir, "result.csv");
   const args = [...splitArgs(task.cfstArgs), "-o", outputPath];
   const hasUrlArg = args.some((arg) => arg === "-url" || arg.startsWith("-url="));
+  const hasFileArg = args.some((arg) => arg === "-f" || arg.startsWith("-f="));
   const testUrl = testTargetToUrl(task.testTarget);
 
   if (testUrl && !hasUrlArg) {
@@ -647,6 +648,16 @@ async function runCfst(task) {
 
   if (task.recordType === "AAAA" && !args.includes("-ipv6")) {
     args.unshift("-ipv6");
+  }
+
+  if (!hasFileArg) {
+    const ipFile = path.join(rootDir, "bin", task.recordType === "AAAA" ? "ipv6.txt" : "ip.txt");
+    try {
+      await fs.access(ipFile, fsConstants.R_OK);
+      args.unshift("-f", ipFile);
+    } catch {
+      throw new Error(`缺少 CloudflareSpeedTest IP 段文件：${ipFile}。Debian 菜单安装/更新会自动安装；手动部署请重新运行 install-cfst。`);
+    }
   }
 
   try {

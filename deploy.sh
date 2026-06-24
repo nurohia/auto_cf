@@ -406,6 +406,9 @@ console.log(asset.browser_download_url);
     binary="$(find "${tmp}/extract" -type f \( -name 'cfst' -o -name 'CloudflareSpeedTest' \) | head -n 1)"
     [[ -n "${binary}" ]] || die "下载包里没有找到 CloudflareSpeedTest 可执行文件"
     install -m 0755 "${binary}" "${workdir}/bin/cfst"
+    find "${tmp}/extract" -maxdepth 2 -type f -name '*.txt' -exec install -m 0644 {} "${workdir}/bin/" \;
+    [[ -f "${workdir}/bin/ip.txt" ]] || die "下载包里没有找到 ip.txt"
+    [[ -f "${workdir}/bin/ipv6.txt" ]] || warn "下载包里没有找到 ipv6.txt，AAAA 快查/任务可能不可用。"
     rm -rf "${tmp}"
     info "CloudflareSpeedTest 已安装到 ${workdir}/bin/cfst"
 }
@@ -413,7 +416,7 @@ console.log(asset.browser_download_url);
 ensure_cfst() {
     local workdir="$1"
 
-    if [[ -x "${workdir}/bin/cfst" ]]; then
+    if [[ -x "${workdir}/bin/cfst" && -f "${workdir}/bin/ip.txt" ]]; then
         info "CloudflareSpeedTest 已就绪：${workdir}/bin/cfst"
         return
     fi

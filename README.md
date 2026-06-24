@@ -32,6 +32,8 @@ http://127.0.0.1:5100
 
 ```text
 bin/cfst
+bin/ip.txt
+bin/ipv6.txt
 ```
 
 或者启动时指定：
@@ -64,6 +66,8 @@ speed.example.com
 ```text
 https://speed.example.com/100mb.bin
 ```
+
+TTL 使用 Cloudflare API 的单位：秒。`1` 表示 Cloudflare 自动 TTL，普通固定 TTL 可填 `60`、`120`、`300` 等。
 
 ## Cloudflare Token 权限
 

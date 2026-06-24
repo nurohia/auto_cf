@@ -19,15 +19,24 @@ NODE_MAJOR="${NODE_MAJOR:-20}"
 SKIP_CFST="${SKIP_CFST:-false}"
 CFST_DOWNLOAD_URL="${CFST_DOWNLOAD_URL:-}"
 
-GREEN="\033[32m"
-YELLOW="\033[33m"
-RED="\033[31m"
-RESET="\033[0m"
+if [[ -t 1 ]]; then
+    GREEN="$(printf '\033[32m')"
+    YELLOW="$(printf '\033[33m')"
+    RED="$(printf '\033[31m')"
+    BOLD="$(printf '\033[1m')"
+    RESET="$(printf '\033[0m')"
+else
+    GREEN=""
+    YELLOW=""
+    RED=""
+    BOLD=""
+    RESET=""
+fi
 
-info() { echo -e "${GREEN}[INFO]${RESET} $1"; }
-warn() { echo -e "${YELLOW}[WARN]${RESET} $1" >&2; }
-err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
-die()  { echo -e "${RED}[FATAL]${RESET} $1" >&2; exit 1; }
+info() { printf '%s[INFO]%s %s\n' "${GREEN}" "${RESET}" "$1"; }
+warn() { printf '%s[WARN]%s %s\n' "${YELLOW}" "${RESET}" "$1" >&2; }
+err()  { printf '%s[ERROR]%s %s\n' "${RED}" "${RESET}" "$1" >&2; }
+die()  { printf '%s[FATAL]%s %s\n' "${RED}" "${RESET}" "$1" >&2; exit 1; }
 
 run_as_root() {
     if [[ "${EUID}" -eq 0 ]]; then
@@ -125,6 +134,13 @@ ask() {
     fi
 }
 
+confirm_yes() {
+    local prompt="$1"
+    local answer
+    read -r -p "${prompt} [y/N]: " answer
+    [[ "${answer}" =~ ^([Yy]|[Yy][Ee][Ss])$ ]]
+}
+
 get_script_dir() {
     cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 }
@@ -179,6 +195,34 @@ get_workdir() {
     fi
 
     echo "${DEFAULT_INSTALL_PATH}"
+}
+
+get_installed_workdir() {
+    local dir
+    if [[ -n "${APP_DIR:-}" && -d "${APP_DIR}" ]]; then
+        echo "${APP_DIR}"
+        return
+    fi
+
+    if [[ -f "${ENV_RECORD_FILE}" ]]; then
+        dir="$(cat "${ENV_RECORD_FILE}" 2>/dev/null || true)"
+        if [[ -n "${dir}" && -d "${dir}" ]]; then
+            echo "${dir}"
+            return
+        fi
+    fi
+
+    if [[ -d "${DEFAULT_INSTALL_PATH}" ]]; then
+        echo "${DEFAULT_INSTALL_PATH}"
+        return
+    fi
+
+    if [[ -d "${LEGACY_INSTALL_PATH}" ]]; then
+        echo "${LEGACY_INSTALL_PATH}"
+        return
+    fi
+
+    echo ""
 }
 
 safe_remove_dir() {
@@ -540,16 +584,19 @@ uninstall_app() {
     require_root "$@"
 
     local workdir
-    workdir="$(get_workdir)"
+    workdir="$(get_installed_workdir)"
 
     warn "即将卸载 ${APP_NAME}"
     warn "服务：${SERVICE_NAME}"
-    warn "目录：${workdir}"
+    warn "目录：${workdir:-未发现安装目录}"
 
     if [[ -t 0 ]]; then
-        local confirm
-        confirm="$(ask "确认卸载？请输入 YES" "")"
-        [[ "${confirm}" == "YES" ]] || die "已取消卸载。"
+        if ! confirm_yes "确认卸载并删除服务、源码和数据？"; then
+            warn "已取消卸载。"
+            return 1
+        fi
+    elif [[ "${AUTO_CF_CONFIRM_UNINSTALL:-}" != "y" ]]; then
+        die "非交互环境不会直接卸载。确认要卸载请设置 AUTO_CF_CONFIRM_UNINSTALL=y。"
     fi
 
     for service in "${SERVICE_NAME}" "auto-cf" "atuo-cf"; do
@@ -558,7 +605,9 @@ uninstall_app() {
         rm -f "/etc/systemd/system/${service}.service"
     done
     systemctl daemon-reload 2>/dev/null || true
-    safe_remove_dir "${workdir}"
+    if [[ -n "${workdir}" ]]; then
+        safe_remove_dir "${workdir}"
+    fi
     if [[ "${workdir}" != "${DEFAULT_INSTALL_PATH}" ]]; then
         safe_remove_dir "${DEFAULT_INSTALL_PATH}" 2>/dev/null || true
     fi
@@ -595,40 +644,39 @@ EOF
 
 show_menu() {
     while true; do
-        local workdir
-        workdir="$(get_workdir)"
-        clear || true
-        cat <<EOF
-${GREEN}${APP_NAME} 管理菜单${RESET}
-
-安装目录：${workdir}
-服务名称：${SERVICE_NAME}
-
-1. 安装 / 重装
-2. 更新项目
-3. 重启服务
-4. 重置管理员密码
-5. 查看状态
-6. 查看日志
-7. 卸载
-0. 退出
-
-EOF
+        local installed_dir display_dir
+        installed_dir="$(get_installed_workdir)"
+        display_dir="${installed_dir:-未安装}"
+        if [[ -t 1 ]]; then
+            clear || true
+        fi
+        printf '%s%s 控制台%s\n' "${BOLD}${GREEN}" "${APP_NAME}" "${RESET}"
+        printf '%s\n\n' '----------------'
+        printf '安装目录  %s\n' "${display_dir}"
+        printf '服务名称  %s\n\n' "${SERVICE_NAME}"
+        printf '[1] 安装 / 重装\n'
+        printf '[2] 更新项目\n'
+        printf '[3] 重启服务\n'
+        printf '[4] 重置管理员密码\n'
+        printf '[5] 查看状态\n'
+        printf '[6] 查看日志\n'
+        printf '[7] 卸载\n'
+        printf '[0] 退出\n\n'
         local choice
-        read -r -p "请选择操作: " choice
+        read -r -p "请选择 [0-7]: " choice
         case "${choice}" in
-            1) install_app ;;
-            2) update_app ;;
-            3) restart_app ;;
-            4) reset_admin_password ;;
+            1) install_app install ;;
+            2) update_app update ;;
+            3) restart_app restart ;;
+            4) reset_admin_password reset-password ;;
             5) show_status ;;
             6) show_logs ;;
-            7) uninstall_app ;;
+            7) uninstall_app uninstall && exit 0 ;;
             0) exit 0 ;;
             *) warn "无效选择。" ;;
         esac
         echo
-        read -r -p "按回车继续..." _
+        read -r -p "回车返回菜单..." _
     done
 }
 

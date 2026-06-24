@@ -141,9 +141,20 @@
             <span>解析到的域名</span>
             <input name="hostname" placeholder="cf.example.com" required />
           </label>
+          <label>
+            <span>Cloudflare 鉴权方式</span>
+            <select name="authType" id="authTypeSelect">
+              <option value="token" selected>API Token</option>
+              <option value="globalKey">Global API Key</option>
+            </select>
+          </label>
+          <label>
+            <span>Cloudflare 邮箱</span>
+            <input name="authEmail" id="authEmailInput" placeholder="Global API Key 时必填" />
+          </label>
           <label class="wide">
-            <span>Cloudflare API Token</span>
-            <input name="apiToken" type="password" placeholder="编辑时留空则继续使用原 Token" />
+            <span id="credentialLabel">Cloudflare API Token</span>
+            <input name="apiToken" type="password" placeholder="编辑时留空则继续使用原凭据" />
           </label>
           <label>
             <span>记录类型</span>

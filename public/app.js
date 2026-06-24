@@ -27,6 +27,7 @@ document.querySelector("#emptyNewButton").addEventListener("click", () => openDi
 document.querySelector("#refreshButton").addEventListener("click", () => refresh());
 document.querySelector("#closeDialogButton").addEventListener("click", () => elements.dialog.close());
 document.querySelector("#cancelDialogButton").addEventListener("click", () => elements.dialog.close());
+document.querySelector("#authTypeSelect").addEventListener("change", updateAuthFields);
 elements.form.addEventListener("submit", saveTask);
 
 document.querySelectorAll(".nav-item").forEach((button) => {
@@ -202,6 +203,8 @@ function openDialog(task = null) {
   elements.dialogTitle.textContent = task ? "编辑任务" : "新增任务";
   elements.form.id.value = task?.id || "";
   elements.form.name.value = task?.name || "";
+  elements.form.authType.value = task?.authType || "token";
+  elements.form.authEmail.value = task?.authEmail || "";
   elements.form.testTarget.value = task?.testTarget || task?.hostname || "";
   elements.form.hostname.value = task?.hostname || "";
   elements.form.apiToken.required = !task;
@@ -214,7 +217,16 @@ function openDialog(task = null) {
   elements.form.cfstArgs.value = task?.cfstArgs || "";
   elements.form.proxied.checked = Boolean(task?.proxied);
   elements.form.enabled.checked = task?.enabled ?? true;
+  updateAuthFields();
   elements.dialog.showModal();
+}
+
+function updateAuthFields() {
+  const isGlobalKey = elements.form.authType.value === "globalKey";
+  document.querySelector("#credentialLabel").textContent = isGlobalKey
+    ? "Cloudflare Global API Key"
+    : "Cloudflare API Token";
+  elements.form.authEmail.required = isGlobalKey;
 }
 
 async function saveTask(event) {

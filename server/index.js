@@ -216,6 +216,8 @@ async function serveStatic(req, res, url) {
 
 function normalizeTask(input, existing = null) {
   const hostname = cleanHostname(input.hostname);
+  const authType = input.authType === "globalKey" ? "globalKey" : "token";
+  const authEmail = String(input.authEmail || existing?.authEmail || "").trim();
   const recordType = input.recordType === "AAAA" ? "AAAA" : "A";
   const intervalValue = Math.max(1, Number.parseInt(input.intervalValue, 10) || 1);
   const intervalUnit = ["seconds", "minutes", "hours", "days"].includes(input.intervalUnit)
@@ -225,11 +227,14 @@ function normalizeTask(input, existing = null) {
   const cfstArgs = typeof input.cfstArgs === "string" ? input.cfstArgs.trim() : "";
 
   if (!hostname) throw badRequest("请填写要解析的域名");
-  if (!existing && !input.apiToken) throw badRequest("请填写 Cloudflare API Token");
+  if (!existing && !input.apiToken) throw badRequest("请填写 Cloudflare 凭据");
+  if (authType === "globalKey" && !authEmail) throw badRequest("Global API Key 模式需要填写 Cloudflare 邮箱");
 
   return {
     id: existing?.id || crypto.randomUUID(),
     name: String(input.name || hostname).trim().slice(0, 80),
+    authType,
+    authEmail,
     testTarget: cleanTestTarget(input.testTarget || existing?.testTarget || hostname),
     hostname,
     recordType,
@@ -593,15 +598,15 @@ function numberFromAny(value) {
 }
 
 async function resolveCloudflareRecord(task, { createIfMissing, createContent = null }) {
-  const token = decrypt(task.token);
-  const zone = await findZone(task.hostname, token);
+  const auth = cloudflareAuth(task);
+  const zone = await findZone(task.hostname, auth);
   const records = await cfRequest(`/zones/${zone.id}/dns_records?type=${task.recordType}&name=${encodeURIComponent(task.hostname)}`, {
-    token
+    auth
   });
   let record = records.result?.[0] || null;
 
   if (!record && createIfMissing) {
-    record = await createDnsRecord(task, zone, createContent, token);
+    record = await createDnsRecord(task, zone, createContent, auth);
   }
 
   if (!record) {
@@ -612,10 +617,10 @@ async function resolveCloudflareRecord(task, { createIfMissing, createContent = 
   task.zoneName = zone.name;
   task.recordId = record.id;
   task.currentIp = record.content;
-  return { token, zone, record };
+  return { auth, zone, record };
 }
 
-async function findZone(hostname, token) {
+async function findZone(hostname, auth) {
   const labels = hostname.split(".");
   const candidates = [];
 
@@ -624,17 +629,17 @@ async function findZone(hostname, token) {
   }
 
   for (const name of candidates) {
-    const data = await cfRequest(`/zones?name=${encodeURIComponent(name)}&status=active`, { token });
+    const data = await cfRequest(`/zones?name=${encodeURIComponent(name)}&status=active`, { auth });
     if (data.result?.[0]) return data.result[0];
   }
 
-  throw new Error(`找不到 ${hostname} 对应的 Cloudflare Zone，请确认 Token 有 Zone Read 权限`);
+  throw new Error(`找不到 ${hostname} 对应的 Cloudflare Zone，请确认 Cloudflare 凭据有 Zone Read 权限`);
 }
 
-async function createDnsRecord(task, zone, content, token) {
+async function createDnsRecord(task, zone, content, auth) {
   const data = await cfRequest(`/zones/${zone.id}/dns_records`, {
     method: "POST",
-    token,
+    auth,
     body: {
       type: task.recordType,
       name: task.hostname,
@@ -649,7 +654,7 @@ async function createDnsRecord(task, zone, content, token) {
 async function updateDnsRecord(task, cf, ip) {
   const data = await cfRequest(`/zones/${cf.zone.id}/dns_records/${cf.record.id}`, {
     method: "PATCH",
-    token: cf.token,
+    auth: cf.auth,
     body: {
       type: task.recordType,
       name: task.hostname,
@@ -665,7 +670,7 @@ async function cfRequest(pathname, options) {
   const response = await fetch(`https://api.cloudflare.com/client/v4${pathname}`, {
     method: options.method || "GET",
     headers: {
-      authorization: `Bearer ${options.token}`,
+      ...cloudflareHeaders(options.auth),
       "content-type": "application/json"
     },
     signal: AbortSignal.timeout(cloudflareTimeoutMs),
@@ -679,6 +684,30 @@ async function cfRequest(pathname, options) {
   }
 
   return data;
+}
+
+function cloudflareAuth(task) {
+  return {
+    type: task.authType === "globalKey" ? "globalKey" : "token",
+    credential: decrypt(task.token),
+    email: task.authEmail || ""
+  };
+}
+
+function cloudflareHeaders(auth) {
+  if (!auth?.credential) throw new Error("Cloudflare 凭据为空");
+
+  if (auth.type === "globalKey") {
+    if (!auth.email) throw new Error("Global API Key 模式需要 Cloudflare 邮箱");
+    return {
+      "x-auth-email": auth.email,
+      "x-auth-key": auth.credential
+    };
+  }
+
+  return {
+    authorization: `Bearer ${auth.credential}`
+  };
 }
 
 function encrypt(value) {

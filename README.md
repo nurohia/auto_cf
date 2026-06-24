@@ -76,6 +76,15 @@ DNS:Edit
 
 作用范围选择对应域名所在 Zone 即可。
 
+面板也兼容 Cloudflare Global API Key。选择 `Global API Key` 鉴权方式时，需要同时填写：
+
+```text
+Cloudflare 邮箱
+Global API Key
+```
+
+API Token 模式会使用 `Authorization: Bearer <TOKEN>`；Global API Key 模式会使用 `X-Auth-Email` 和 `X-Auth-Key`。
+
 ## 数据文件
 
 运行后会生成：
@@ -113,10 +122,28 @@ curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | su
 auto-cf
 ```
 
-安装 CloudflareSpeedTest：
+安装脚本会默认自动安装 CloudflareSpeedTest 到：
+
+```text
+/opt/auto_cf/bin/cfst
+```
+
+手动安装或更新 CloudflareSpeedTest：
 
 ```bash
 sudo bash deploy.sh install-cfst
+```
+
+如果你的服务器访问 GitHub release 不稳定，可以指定下载直链：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | sudo CFST_DOWNLOAD_URL=https://example.com/CloudflareSpeedTest.tar.gz bash -s install
+```
+
+只有在你明确不想自动安装 CFST 时才使用：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | sudo SKIP_CFST=true bash -s install
 ```
 
 常用命令：

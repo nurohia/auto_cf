@@ -14,6 +14,8 @@ SOURCE_REPO_BRANCH="${SOURCE_REPO_BRANCH:-main}"
 SCRIPT_RAW_URL="${SCRIPT_RAW_URL:-https://raw.githubusercontent.com/nurohia/auto_cf/${SOURCE_REPO_BRANCH}/deploy.sh}"
 DEFAULT_WEB_PORT="${PORT:-5100}"
 NODE_MAJOR="${NODE_MAJOR:-20}"
+SKIP_CFST="${SKIP_CFST:-false}"
+CFST_DOWNLOAD_URL="${CFST_DOWNLOAD_URL:-}"
 
 GREEN="\033[32m"
 YELLOW="\033[33m"
@@ -296,11 +298,13 @@ download_cfst() {
 
     local tmp
     tmp="$(mktemp -d)"
-    info "下载 CloudflareSpeedTest latest release ..."
-    curl -fsSL "https://api.github.com/repos/XIU2/CloudflareSpeedTest/releases/latest" -o "${tmp}/release.json"
-
     local asset_url
-    asset_url="$(node -e "
+    if [[ -n "${CFST_DOWNLOAD_URL}" ]]; then
+        asset_url="${CFST_DOWNLOAD_URL}"
+    else
+        info "下载 CloudflareSpeedTest latest release ..."
+        curl -fsSL "https://api.github.com/repos/XIU2/CloudflareSpeedTest/releases/latest" -o "${tmp}/release.json"
+        asset_url="$(node -e "
 const fs = require('fs');
 const release = JSON.parse(fs.readFileSync('${tmp}/release.json', 'utf8'));
 const asset = release.assets.find(item =>
@@ -311,6 +315,7 @@ const asset = release.assets.find(item =>
 if (!asset) process.exit(1);
 console.log(asset.browser_download_url);
 ")" || die "没有找到 linux-${arch} 的 CloudflareSpeedTest release 包"
+    fi
 
     curl -fL "${asset_url}" -o "${tmp}/cfst.pkg"
     mkdir -p "${tmp}/extract" "${workdir}/bin"
@@ -326,6 +331,22 @@ console.log(asset.browser_download_url);
     install -m 0755 "${binary}" "${workdir}/bin/cfst"
     rm -rf "${tmp}"
     info "CloudflareSpeedTest 已安装到 ${workdir}/bin/cfst"
+}
+
+ensure_cfst() {
+    local workdir="$1"
+
+    if [[ -x "${workdir}/bin/cfst" ]]; then
+        info "CloudflareSpeedTest 已就绪：${workdir}/bin/cfst"
+        return
+    fi
+
+    if [[ "${SKIP_CFST}" == "true" ]]; then
+        warn "已按 SKIP_CFST=true 跳过 CloudflareSpeedTest 安装。"
+        return
+    fi
+
+    download_cfst "${workdir}"
 }
 
 show_success() {
@@ -377,19 +398,7 @@ install_app() {
     sync_project_source "${workdir}"
     write_service "${workdir}" "${port}"
 
-    if [[ ! -x "${workdir}/bin/cfst" ]]; then
-        if [[ -t 0 ]]; then
-            local install_cfst
-            install_cfst="$(ask "是否现在安装 CloudflareSpeedTest？请输入 y/n" "y")"
-            if [[ "${install_cfst}" =~ ^[Yy]$ ]]; then
-                download_cfst "${workdir}"
-            else
-                warn "已跳过 CFST。之后可运行：sudo bash ${workdir}/deploy.sh install-cfst"
-            fi
-        else
-            warn "未检测到 CFST。之后可运行：sudo bash ${workdir}/deploy.sh install-cfst"
-        fi
-    fi
+    ensure_cfst "${workdir}"
 
     start_service
     show_success "${workdir}" "${port}"
@@ -409,6 +418,7 @@ update_app() {
     port="$(detect_port)"
     echo "${workdir}" > "${ENV_RECORD_FILE}"
     sync_project_source "${workdir}"
+    ensure_cfst "${workdir}"
     write_service "${workdir}" "${port}"
     start_service
     info "更新完成。"
@@ -484,7 +494,8 @@ ${APP_NAME} 一键部署脚本
   curl -fsSL ${SCRIPT_RAW_URL} | sudo bash -s install
 
 可选环境变量：
-  APP_DIR=/opt/auto_cf PORT=5100 SERVICE_NAME=auto-cf SOURCE_REPO_BRANCH=main
+  APP_DIR=/opt/auto_cf PORT=5100 SERVICE_NAME=auto-cf SOURCE_REPO_BRANCH=main SKIP_CFST=false
+  CFST_DOWNLOAD_URL=https://example.com/CloudflareSpeedTest.tar.gz
 EOF
 }
 

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atuo CF 优选面板</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">CF</div>
+          <div>
+            <strong>Atuo CF</strong>
+            <span>优选解析面板</span>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="tasks">
+            <span class="icon">⌁</span>
+            <span>任务</span>
+          </button>
+          <button class="nav-item" data-view="logs">
+            <span class="icon">≡</span>
+            <span>日志</span>
+          </button>
+          <button class="nav-item" data-view="settings">
+            <span class="icon">⚙</span>
+            <span>环境</span>
+          </button>
+        </nav>
+        <div class="side-card">
+          <span>CFST</span>
+          <strong id="cfstStatus">检测中</strong>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h1>优选解析任务</h1>
+          </div>
+          <div class="top-actions">
+            <button class="ghost-button" id="refreshButton" title="刷新">↻</button>
+            <button class="primary-button" id="newTaskButton">新增任务</button>
+          </div>
+        </header>
+
+        <section class="metrics">
+          <div class="metric">
+            <span>任务总数</span>
+            <strong id="metricTasks">0</strong>
+          </div>
+          <div class="metric">
+            <span>启用</span>
+            <strong id="metricEnabled">0</strong>
+          </div>
+          <div class="metric">
+            <span>成功运行</span>
+            <strong id="metricSuccess">0</strong>
+          </div>
+          <div class="metric">
+            <span>失败</span>
+            <strong id="metricFailed">0</strong>
+          </div>
+        </section>
+
+        <section class="view active" id="tasksView">
+          <div class="task-grid" id="taskGrid"></div>
+          <div class="empty-state hidden" id="emptyState">
+          <div class="empty-art">
+            <span></span><span></span><span></span>
+          </div>
+            <h2>还没有优选任务</h2>
+            <button class="primary-button" id="emptyNewButton">新增任务</button>
+          </div>
+        </section>
+
+        <section class="view" id="logsView">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>域名</th>
+                  <th>旧 IP</th>
+                  <th>新 IP</th>
+                  <th>延迟</th>
+                  <th>速度</th>
+                  <th>状态</th>
+                  <th>消息</th>
+                </tr>
+              </thead>
+              <tbody id="logRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="settingsView">
+          <div class="settings-panel">
+            <h2>运行环境</h2>
+            <div class="setting-row">
+              <span>服务地址</span>
+              <strong id="serviceUrl"></strong>
+            </div>
+            <div class="setting-row">
+              <span>测速程序</span>
+              <strong id="cfstPath">检测中</strong>
+            </div>
+            <div class="setting-row">
+              <span>数据目录</span>
+              <strong>.data/db.json</strong>
+            </div>
+            <p class="muted">CloudflareSpeedTest 请放到 <code>bin/cfst</code>，或启动前设置 <code>CFST_BIN</code>。</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="taskDialog">
+      <form method="dialog" id="taskForm" class="task-form">
+        <div class="dialog-head">
+          <div>
+            <h2 id="dialogTitle">新增任务</h2>
+          </div>
+          <button class="icon-button" id="closeDialogButton" type="button" title="关闭">×</button>
+        </div>
+
+        <input type="hidden" name="id" />
+        <div class="form-grid">
+          <label>
+            <span>任务名称</span>
+            <input name="name" placeholder="英国优选" />
+          </label>
+          <label>
+            <span>要优选的域名</span>
+            <input name="testTarget" placeholder="speed.example.com 或 https://speed.example.com/file" required />
+          </label>
+          <label class="wide">
+            <span>解析到的域名</span>
+            <input name="hostname" placeholder="cf.example.com" required />
+          </label>
+          <label class="wide">
+            <span>Cloudflare API Token</span>
+            <input name="apiToken" type="password" placeholder="编辑时留空则继续使用原 Token" />
+          </label>
+          <label>
+            <span>记录类型</span>
+            <select name="recordType">
+              <option value="A">A IPv4</option>
+              <option value="AAAA">AAAA IPv6</option>
+            </select>
+          </label>
+          <label>
+            <span>TTL</span>
+            <input name="ttl" type="number" min="1" value="1" />
+          </label>
+          <label>
+            <span>间隔数值</span>
+            <input name="intervalValue" type="number" min="1" value="1" required />
+          </label>
+          <label>
+            <span>间隔单位</span>
+            <select name="intervalUnit">
+              <option value="seconds">秒</option>
+              <option value="minutes">分钟</option>
+              <option value="hours" selected>小时</option>
+              <option value="days">天</option>
+            </select>
+          </label>
+          <label>
+            <span>最高延迟 ms</span>
+            <input name="maxLatency" type="number" min="0" placeholder="可选" />
+          </label>
+          <label>
+            <span>最低速度 MB/s</span>
+            <input name="minSpeed" type="number" min="0" step="0.1" placeholder="可选" />
+          </label>
+          <label class="wide">
+            <span>CFST 参数</span>
+            <input name="cfstArgs" placeholder="-tl 200 -sl 5 -dn 10" />
+          </label>
+        </div>
+
+        <div class="switch-row">
+          <label class="switch">
+            <input name="proxied" type="checkbox" />
+            <span></span>
+            <b>开启 Cloudflare 代理</b>
+          </label>
+          <label class="switch">
+            <input name="enabled" type="checkbox" checked />
+            <span></span>
+            <b>启用定时</b>
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="ghost-button" id="cancelDialogButton" type="button">取消</button>
+          <button class="primary-button" id="saveTaskButton" type="submit">保存任务</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast hidden" id="toast"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

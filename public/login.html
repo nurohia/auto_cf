@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auto CF 登录</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="login-screen" id="loginScreen">
+      <form class="login-box" id="loginForm">
+        <div class="brand login-brand">
+          <div class="brand-mark">CF</div>
+          <div>
+            <strong>Auto CF</strong>
+            <span>登录管理面板</span>
+          </div>
+        </div>
+        <label>
+          <span>管理员密码</span>
+          <input name="password" type="password" autocomplete="current-password" required autofocus />
+        </label>
+        <button class="primary-button" type="submit">登录</button>
+      </form>
+    </div>
+    <div class="toast hidden" id="toast"></div>
+    <script>
+      const form = document.querySelector("#loginForm");
+      const toast = document.querySelector("#toast");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const response = await fetch("/api/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok) {
+          location.href = "/";
+          return;
+        }
+        toast.textContent = data.error || "登录失败";
+        toast.classList.remove("hidden");
+      });
+    </script>
+  </body>
+</html>

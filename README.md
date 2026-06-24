@@ -154,6 +154,7 @@ curl -fsSL https://raw.githubusercontent.com/nurohia/auto_cf/main/deploy.sh | su
 bash deploy.sh menu
 bash deploy.sh status
 bash deploy.sh logs
+bash deploy.sh reset-password
 sudo bash deploy.sh update
 sudo bash deploy.sh restart
 sudo bash deploy.sh uninstall

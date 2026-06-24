@@ -55,6 +55,11 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (!canServeStatic(req, url)) {
+      await serveStaticFile(res, path.join(publicDir, "login.html"));
+      return;
+    }
+
     await serveStatic(req, res, url);
   } catch (error) {
     sendJson(res, error.status || 500, { error: error.message || "服务器错误" });
@@ -234,7 +239,7 @@ async function handleSessionApi(req, res) {
     res.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "set-cookie": `auto_cf_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 60 * 60}`
+      "set-cookie": buildSessionCookie(req, token)
     });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -246,7 +251,7 @@ async function handleSessionApi(req, res) {
     res.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "set-cookie": "auto_cf_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+      "set-cookie": buildSessionCookie(req, "", 0)
     });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -266,6 +271,15 @@ function isAuthenticated(req) {
   return true;
 }
 
+function buildSessionCookie(req, token, maxAge = 7 * 24 * 60 * 60) {
+  const secure = isHttps(req) ? "; Secure" : "";
+  return `auto_cf_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${secure}`;
+}
+
+function isHttps(req) {
+  return Boolean(req.socket.encrypted || req.headers["x-forwarded-proto"] === "https");
+}
+
 function readCookie(req, name) {
   const cookies = String(req.headers.cookie || "").split(";").map((item) => item.trim());
   const prefix = `${name}=`;
@@ -283,7 +297,7 @@ async function serveStatic(req, res, url) {
   const pathname = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
   const filePath = path.normalize(path.join(publicDir, pathname));
 
-  if (!filePath.startsWith(publicDir)) {
+  if (!isInsidePublicDir(filePath)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -305,6 +319,24 @@ async function serveStatic(req, res, url) {
     });
     createReadStream(fallback).pipe(res);
   }
+}
+
+function canServeStatic(req, url) {
+  if (url.pathname === "/styles.css" || url.pathname === "/app.js") return true;
+  if (url.pathname === "/login.html") return true;
+  return isAuthenticated(req);
+}
+
+function isInsidePublicDir(filePath) {
+  return filePath === publicDir || filePath.startsWith(`${publicDir}${path.sep}`);
+}
+
+async function serveStaticFile(res, filePath) {
+  res.writeHead(200, {
+    "content-type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
+    "cache-control": "no-store"
+  });
+  createReadStream(filePath).pipe(res);
 }
 
 function normalizeTask(input, existing = null) {

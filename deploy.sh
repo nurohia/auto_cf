@@ -330,6 +330,32 @@ ensure_admin_password() {
     fi
 }
 
+reset_admin_password() {
+    require_root "$@"
+    local workdir
+    workdir="$(get_workdir)"
+    [[ -d "${workdir}" ]] || die "未找到安装目录，请先运行安装。"
+
+    local password_file="${workdir}/.data/admin-password"
+    mkdir -p "${workdir}/.data"
+    chmod 700 "${workdir}/.data"
+    openssl rand -base64 18 > "${password_file}"
+    chmod 600 "${password_file}"
+    systemctl restart "${SERVICE_NAME}" 2>/dev/null || true
+
+    cat <<EOF
+
+${GREEN}管理员密码已重置。${RESET}
+
+新密码：
+  $(cat "${password_file}")
+
+密码文件：
+  ${password_file}
+
+EOF
+}
+
 start_service() {
     systemctl restart "${SERVICE_NAME}"
 }
@@ -549,6 +575,7 @@ ${APP_NAME} 一键部署脚本
   bash deploy.sh install             安装
   bash deploy.sh update              更新并重启
   bash deploy.sh restart             重启服务
+  bash deploy.sh reset-password      重置管理员密码
   bash deploy.sh status              查看状态
   bash deploy.sh logs                查看日志
   bash deploy.sh uninstall           卸载
@@ -577,9 +604,10 @@ ${GREEN}${APP_NAME} 管理菜单${RESET}
 1. 安装 / 重装
 2. 更新项目
 3. 重启服务
-4. 查看状态
-5. 查看日志
-6. 卸载
+4. 重置管理员密码
+5. 查看状态
+6. 查看日志
+7. 卸载
 0. 退出
 
 EOF
@@ -589,9 +617,10 @@ EOF
             1) install_app ;;
             2) update_app ;;
             3) restart_app ;;
-            4) show_status ;;
-            5) show_logs ;;
-            6) uninstall_app ;;
+            4) reset_admin_password ;;
+            5) show_status ;;
+            6) show_logs ;;
+            7) uninstall_app ;;
             0) exit 0 ;;
             *) warn "无效选择。" ;;
         esac
@@ -607,6 +636,7 @@ main() {
         update) update_app "$@" ;;
         install-cfst|cfst) install_cfst_action "$@" ;;
         restart) restart_app "$@" ;;
+        reset-password|password) reset_admin_password "$@" ;;
         status) show_status ;;
         logs) show_logs ;;
         uninstall|remove) uninstall_app "$@" ;;
